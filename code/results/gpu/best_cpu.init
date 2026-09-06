@@ -1,0 +1,59 @@
+===========================================
+
+--- Build Complete ---
+--- Running Simulation ---
+Nodes = 8
+Tasks / Node = 1 (Pure OpenMP)
+CPUs / Task = 2 (OMP Threads)
+ ================= Execution Info ==================
+  Number of MPI tasks:  128
+  Number of OpenMP threads:    2
+   OpenMP: ENABLED
+   OpenACC: DISABLED
+ ===================================================
+ --------------- Domain Decomposition --------------
+  Global nx:   2000
+  Local nx per process: ~    15
+ ---------------------------------------------------
+ SIMPLE ATMOSPHERIC MODEL STARTING.
+Wall Clock Start: 17:39:42.190
+ INITIALIZING MODEL STATUS.
+ nx_global  :         2000
+ nx_local   :           16
+ nz         :         1000
+ dx         :    10.000000000000000     
+ dz         :    10.000000000000000     
+ dt         :    3.3333333333333333E-002
+ final time :    1000.0000000000000     
+ MODEL STATUS INITIALIZED.
+ TIME PERCENT :  0%
+ TIME PERCENT : 10%
+ TIME PERCENT : 20%
+ TIME PERCENT : 30%
+ TIME PERCENT : 40%
+ TIME PERCENT : 50%
+ TIME PERCENT : 60%
+ TIME PERCENT : 70%
+ TIME PERCENT : 80%
+ TIME PERCENT : 90%
+ ----------------- Atmosphere check ----------------
+ Fractional Delta Mass  :   -5.8624507538158524E-016
+ Fractional Delta Energy:    1.2551505686586215E-004
+ ---------------------------------------------------
+ ----------------------------------------------------------------------------------------------------
+ PARALLEL TIMING STATISTICS (Microseconds)
+                      Function      Max Total       Max Excl      Avg Total     Calls
+ ----------------------------------------------------------------------------------------------------
+                          INIT       43843.82        7404.76       41666.13       128
+          Computation: thermal       36553.07       16231.81       34511.24  23212096
+Computation: hydrostatic_const       20608.25       20608.25       19612.44  23212096
+Computation: total_mass_energy       19387.65        1648.21       11498.84       256
+            MPI: Communication    32021954.09    32021954.09    24357822.33  11520640
+       Computation: rungekutta   139457144.13       61906.19   139401134.01   3840128
+             Computation: step   139431011.73   127954239.15   139359773.73  23040768
+ ----------------------------------------------------------------------------------------------------
+ * Max Total/Excl: The slowest rank for that function.
+ * Avg Total: Average wall time across all ranks.
+ SIMPLE ATMOSPHERIC MODEL RUN COMPLETED.
+Wall Clock End:   17:42:01.707
+USED CPU TIME:            134.738302 seconds

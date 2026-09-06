@@ -1,0 +1,90 @@
+Loading netcdf-fortran/4.6.1--hpcx-mpi--2.19--nvhpc--24.5
+  Loading requirement: glibc/2.28--gcc--12.2.0-gi6mmti bzip2/1.0.8-ib3znej
+    gcc-runtime/12.2.0--gcc--12.2.0-dqfwf7y lz4/1.9.4--gcc--12.2.0-dcavnmi
+    snappy/1.1.10--gcc--12.2.0-gagtosp zlib-ng/2.1.6-jkgunjc zstd/1.5.6-uq5yyux
+    c-blosc/1.21.5--gcc--12.2.0-buk7w2l pkgconf/2.2.0
+    hdf5/1.14.3--hpcx-mpi--2.19--nvhpc--24.5 libaec/1.0.6--gcc--12.2.0-blqbmai
+    parallel-netcdf/1.12.3--hpcx-mpi--2.19--nvhpc--24.5
+    netcdf-c/4.9.2--hpcx-mpi--2.19--nvhpc--24.5
+--- Building Model ---
+rm -f *.o *.mod model *.nc
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC module_parameters.f90 -c
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC parallel_timer.f90 -c
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC  -c module_nvtx.f90
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC module_types.F90 -c
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC module_physics.f90 -c
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC module_output.F90 -c
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC model.F90 -o model *.o -L`nc-config --libdir` `nf-config --flibs` -L/leonardo/prod/opt/compilers/cuda/12.6/none/lib64 -lnvToolsExt
+--- Running Simulation ---
+Nodes = 4
+Tasks / Node = 4
+CPUs / Task = 1 (OMP Threads)
+  MPI Rank   13 -> GPU  1
+  MPI Rank    2 -> GPU  2
+  MPI Rank    5 -> GPU  1
+  MPI Rank    9 -> GPU  1
+  MPI Rank   14 -> GPU  2
+  MPI Rank   15 -> GPU  3
+  MPI Rank   12 -> GPU  0
+ ================= Execution Info ==================
+  Number of MPI tasks:   16
+   OpenMP: DISABLED
+  Number of GPUs available:    4
+   OpenACC: ENABLED
+ ===================================================
+  MPI Rank    0 -> GPU  0
+ --------------- Domain Decomposition --------------
+  Global nx:   2000
+  Local nx per process: ~   125
+ ---------------------------------------------------
+ SIMPLE ATMOSPHERIC MODEL STARTING.
+Wall Clock Start: 17:08:25.870
+ INITIALIZING MODEL STATUS.
+ nx_global  :          2000
+ nx_local   :           125
+ nz         :          1000
+ dx         :     10.00000000000000     
+ dz         :     10.00000000000000     
+ dt         :    3.3333333333333333E-002
+ final time :     500.0000000000000     
+ MODEL STATUS INITIALIZED.
+ TIME PERCENT :  0%
+ TIME PERCENT : 10%
+ TIME PERCENT : 20%
+ TIME PERCENT : 30%
+ TIME PERCENT : 40%
+ TIME PERCENT : 50%
+ TIME PERCENT : 60%
+ TIME PERCENT : 70%
+ TIME PERCENT : 80%
+ TIME PERCENT : 90%
+ ----------------- Atmosphere check ----------------
+ Fractional Delta Mass  :    3.9083005025439056E-016
+ Fractional Delta Energy:    5.4812269575882839E-005
+ ---------------------------------------------------
+ ----------------------------------------------------------------------------------------------------
+ PARALLEL TIMING STATISTICS (Microseconds)
+                      Function      Max Total       Max Excl      Avg Total     Calls
+ ----------------------------------------------------------------------------------------------------
+                          INIT      640464.83       52167.12      553143.66        16
+          Computation: thermal      589375.71      213527.39      502057.48  18714512
+Computation: hydrostatic_const      375848.32      375848.32      319475.64  18714512
+Computation: total_mass_energy      102409.11        4308.60       91256.24        32
+            MPI: Communication     4445672.90     4445672.90     4315448.44    720032
+       Computation: rungekutta    17103482.73       17201.29    17102580.47    240000
+             Computation: step    17088363.73    13067053.61    17086509.57   1440000
+ ----------------------------------------------------------------------------------------------------
+ * Max Total/Excl: The slowest rank for that function.
+ * Avg Total: Average wall time across all ranks.
+ SIMPLE ATMOSPHERIC MODEL RUN COMPLETED.
+Wall Clock End:   17:08:43.670
+USED CPU TIME:             17.128099 seconds
+  MPI Rank    3 -> GPU  3
+  MPI Rank    1 -> GPU  1
+  MPI Rank    7 -> GPU  3
+  MPI Rank    6 -> GPU  2
+  MPI Rank    4 -> GPU  0
+  MPI Rank   10 -> GPU  2
+  MPI Rank   11 -> GPU  3
+  MPI Rank    8 -> GPU  0
+--- Ending Simulation ---

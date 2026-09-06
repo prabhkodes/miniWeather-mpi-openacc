@@ -1,0 +1,33 @@
+Performance counter stats for './model':
+
+        256,493.29 msec task-clock                #    0.999 CPUs utilized          
+             1,404      context-switches          #    5.474 /sec                   
+                 0      cpu-migrations            #    0.000 /sec                   
+             7,531      page-faults               #   29.361 /sec                   
+   841,132,451,095      cycles                    #    3.279 GHz                      (38.46%)
+ 2,019,228,482,503      instructions              #    2.40  insn per cycle           (46.15%)
+   154,293,868,322      branches                  #  601.551 M/sec                    (53.85%)
+        83,498,205      branch-misses             #    0.05% of all branches          (61.54%)
+ 4,206,179,864,501      slots                     #   16.399 G/sec                    (69.23%)
+   488,849,685,816      topdown-retiring          #     10.8% retiring                (69.23%)
+ 3,381,438,714,598      topdown-bad-spec          #     74.6% bad speculation         (69.23%)
+    33,118,518,795      topdown-fe-bound          #      0.7% frontend bound          (69.23%)
+   627,311,712,968      topdown-be-bound          #     13.8% backend bound           (69.23%)
+   587,568,847,051      L1-dcache-loads           #    2.291 G/sec                    (69.23%)
+    17,681,480,301      L1-dcache-load-misses     #    3.01% of all L1-dcache accesses  (69.23%)
+       139,856,681      LLC-loads                 #  545.264 K/sec                    (69.23%)
+         4,278,813      LLC-load-misses           #    3.06% of all LL-cache accesses  (69.23%)
+   <not supported>      L1-icache-loads                                             
+        59,686,921      L1-icache-load-misses                                         (30.77%)
+   588,519,439,928      dTLB-loads                #    2.294 G/sec                    (30.77%)
+         6,038,449      dTLB-load-misses          #    0.00% of all dTLB cache accesses  (30.77%)
+   <not supported>      iTLB-loads                                                  
+            47,368      iTLB-load-misses                                              (30.77%)
+   <not supported>      L1-dcache-prefetches                                        
+   <not supported>      L1-dcache-prefetch-misses                                   
+
+     256.632430113 seconds time elapsed
+
+     254.315529000 seconds user
+       0.208176000 seconds sys
+

@@ -1,0 +1,56 @@
+# ---- Project ----
+PROJECT_NAME           = "2D dynamical fluid flow in Fortran"
+PROJECT_BRIEF          = "2-D compressible Euler solver with dimensional splitting, RK3 time stepping, and hyper-viscosity"
+OUTPUT_DIRECTORY       = .
+CREATE_SUBDIRS         = NO
+FULL_PATH_NAMES        = YES
+STRIP_FROM_PATH        = ..
+# USE_MDFILE_AS_MAINPAGE = README.md
+MARKDOWN_SUPPORT       = YES
+
+# ---- Input ----
+# Where your source lives
+INPUT                  = ../..
+RECURSIVE              = NO
+
+# Only look at Fortran sources (and maybe CMake, etc, if you want)
+FILE_PATTERNS          = *.f *.F *.f90 *.F90
+EXTENSION_MAPPING      = f90=FortranFree F90=FortranFree
+
+# ---- Fortran-specific ----
+OPTIMIZE_FOR_FORTRAN   = YES
+
+# ---- What to extract ----
+EXTRACT_ALL            = YES          # good at the beginning
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+EXTRACT_LOCAL_METHODS  = YES
+EXTRACT_PACKAGE        = YES
+EXTRACT_INTERNAL       = YES
+
+# ---- Source browser / call graphs (optional, but nice) ----
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = YES
+REFERENCES_LINK_SOURCE = YES
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+SHOW_USED_FILES        = YES
+GENERATE_TREEVIEW      = YES
+
+HAVE_DOT               = YES          # requires Graphviz
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+CLASS_DIAGRAMS         = YES
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+DOT_GRAPH_MAX_NODES    = 75
+MAX_DOT_GRAPH_DEPTH    = 0
+
+# ---- HTML/Theming ----
+HTML_EXTRA_STYLESHEET  = "custom.css" \
+                         "custom_dark_theme.css"
+
+# ---- Warnings ----
+WARN_IF_UNDOCUMENTED   = YES
+WARN_NO_PARAMDOC       = YES

@@ -1,0 +1,78 @@
+Loading netcdf-fortran/4.6.1--hpcx-mpi--2.19--nvhpc--24.5
+  Loading requirement: glibc/2.28--gcc--12.2.0-gi6mmti bzip2/1.0.8-ib3znej
+    gcc-runtime/12.2.0--gcc--12.2.0-dqfwf7y lz4/1.9.4--gcc--12.2.0-dcavnmi
+    snappy/1.1.10--gcc--12.2.0-gagtosp zlib-ng/2.1.6-jkgunjc zstd/1.5.6-uq5yyux
+    c-blosc/1.21.5--gcc--12.2.0-buk7w2l pkgconf/2.2.0
+    hdf5/1.14.3--hpcx-mpi--2.19--nvhpc--24.5 libaec/1.0.6--gcc--12.2.0-blqbmai
+    parallel-netcdf/1.12.3--hpcx-mpi--2.19--nvhpc--24.5
+    netcdf-c/4.9.2--hpcx-mpi--2.19--nvhpc--24.5
+--- Building Model ---
+rm -f *.o *.mod model *.nc
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC module_parameters.f90 -c
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC parallel_timer.f90 -c
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC  -c module_nvtx.f90
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC module_types.F90 -c
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC module_physics.f90 -c
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC module_output.F90 -c
+mpifort -fast -acc -gpu=cc80 -Minfo=accel -Mpreprocess -I. `nf-config --fflags` -DUSE_OPENACC model.F90 -o model *.o -L`nc-config --libdir` `nf-config --flibs` -L/leonardo/prod/opt/compilers/cuda/12.6/none/lib64 -lnvToolsExt
+--- Running Simulation ---
+Nodes = 1
+Tasks / Node = 4
+CPUs / Task = 1 (OMP Threads)
+  MPI Rank    1 -> GPU  1
+  MPI Rank    3 -> GPU  3
+  MPI Rank    2 -> GPU  2
+ ================= Execution Info ==================
+  Number of MPI tasks:    4
+   OpenMP: DISABLED
+  Number of GPUs available:    4
+   OpenACC: ENABLED
+ ===================================================
+  MPI Rank    0 -> GPU  0
+ --------------- Domain Decomposition --------------
+  Global nx:   2000
+  Local nx per process: ~   500
+ ---------------------------------------------------
+ SIMPLE ATMOSPHERIC MODEL STARTING.
+Wall Clock Start: 17:05:20.235
+ INITIALIZING MODEL STATUS.
+ nx_global  :          2000
+ nx_local   :           500
+ nz         :          1000
+ dx         :     10.00000000000000     
+ dz         :     10.00000000000000     
+ dt         :    3.3333333333333333E-002
+ final time :     500.0000000000000     
+ MODEL STATUS INITIALIZED.
+ TIME PERCENT :  0%
+ TIME PERCENT : 10%
+ TIME PERCENT : 20%
+ TIME PERCENT : 30%
+ TIME PERCENT : 40%
+ TIME PERCENT : 50%
+ TIME PERCENT : 60%
+ TIME PERCENT : 70%
+ TIME PERCENT : 80%
+ TIME PERCENT : 90%
+ ----------------- Atmosphere check ----------------
+ Fractional Delta Mass  :    1.1724901507631725E-015
+ Fractional Delta Energy:    5.4812269573953725E-005
+ ---------------------------------------------------
+ ----------------------------------------------------------------------------------------------------
+ PARALLEL TIMING STATISTICS (Microseconds)
+                      Function      Max Total       Max Excl      Avg Total     Calls
+ ----------------------------------------------------------------------------------------------------
+                          INIT     2130089.44      197533.66     2120694.14         4
+          Computation: thermal     1936764.37      708882.87     1926071.37  18232628
+Computation: hydrostatic_const     1227881.50     1227881.50     1225442.65  18232628
+Computation: total_mass_energy       30478.33       11623.03       21038.24         8
+            MPI: Communication      845796.07      845796.07      761652.42    180008
+       Computation: rungekutta    20995277.06       16558.18    20994783.65     60000
+             Computation: step    20979471.71    20292650.24    20978923.39    360000
+ ----------------------------------------------------------------------------------------------------
+ * Max Total/Excl: The slowest rank for that function.
+ * Avg Total: Average wall time across all ranks.
+ SIMPLE ATMOSPHERIC MODEL RUN COMPLETED.
+Wall Clock End:   17:05:43.489
+USED CPU TIME:             21.077883 seconds
+--- Ending Simulation ---
