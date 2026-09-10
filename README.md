@@ -76,10 +76,15 @@ the `**cdocv` power is left out, so take it as ±20% and a lower bound.
 
 ### CPU, NX = 400 — OpenMP and MPI+OpenMP
 
-![CPU scaling](results/plots/combined_summary_plot.png)
+![CPU scaling, 1 to 16 nodes](results/plots/cpu_scaling_1_to_16_nodes.png)
 
-19 configurations from 1 to 16 nodes, blue is computation and red is communication, log scale.
-`N` = nodes, `R` = MPI ranks, `T` = OpenMP threads per rank.
+19 configurations from 1 to 16 nodes. Colour is the node count, lighter shading means more threads per
+rank, and the hatched part on top is communication. Log scale. `N` = nodes, `R` = MPI ranks,
+`T` = OpenMP threads per rank.
+
+The same runs again, this time ordered by total cores instead of by node count:
+
+![CPU scaling by total cores](results/plots/cpu_scaling_by_total_cores.png)
 
 | Configuration | Cores | Time | Speedup | Mcell-upd/s | GFLOP/s |
 |---|---:|---:|---:|---:|---:|
@@ -95,9 +100,10 @@ the `**cdocv` power is left out, so take it as ±20% and a lower bound.
 
 Three things the plot shows that the numbers alone don't:
 
-**Ranks beat threads at the same core count.** On one node, 4 ranks × 8 threads finishes in 9.5 s while
-1 rank × 32 threads takes 18.2 s. Same 32 cores. Four ranks each sit in their own NUMA domain; one rank
-spread across the socket keeps reaching into memory attached to a different one.
+**Ranks beat threads at the same core count.** The second plot makes this obvious — four bars sit at 32
+cores and range from 9.54 s to 18.22 s. Same hardware, 1.9× apart, purely from how you split ranks and
+threads. 4 ranks × 8 threads wins; 1 rank × 32 threads loses. Four ranks each sit in their own NUMA
+domain, while one rank spread across the socket keeps reaching into memory attached to a different one.
 
 **Getting the rank/thread split wrong costs more than adding hardware saves.** 2N 2R 1T — two nodes,
 one thread per rank — took 89.1 s, worse than a single node doing almost anything else. Two ranks on 64
@@ -108,8 +114,8 @@ communication is most of the runtime. Best time is 2.14 s on 8 nodes; 16 nodes g
 the whole grid is 80,000 cells, so by 512 cores each core owns about 156 cells and spends more time
 exchanging halos than updating them.
 
-`results/plots/stacked_histogram_clean.png` is a filtered view of the same runs, and
-`results/analysis/` has the scripts that produced both.
+`results/plots/` also has `combined_summary_plot.png` and `stacked_histogram_clean.png`, plainer views
+of the same runs. `results/analysis/` has the scripts that produced them.
 
 ### Multi-GPU, nx = 2000, nz = 1000
 
