@@ -44,37 +44,66 @@ Full write-up in [`docs/presentation.pdf`](docs/presentation.pdf).
 
 ## Results
 
-Leonardo Booster (CINECA) — Intel Ice Lake, 4× A100 per node.
+Leonardo Booster (CINECA) — Intel Ice Lake Xeon 8358, 32 cores/node, 4× A100 64 GB per node.
+
+### What is actually being measured
+
+Everything is **double precision** (`wp = real64`, 8 bytes). Four prognostic variables — density,
+*x*-momentum, *z*-momentum, ρθ. Halo of 2 cells, fourth-order stencil. Domain is fixed at
+20 km × 10 km, so `nz = nx/2` and `dt = 1.5·dx/450` from the CFL condition.
+
+| | NX = 400 (CPU runs) | nx = 2000, nz = 1000 (GPU runs) |
+|---|---:|---:|
+| Cells | 80,000 | 2,000,000 |
+| dx, dt | 50 m, 0.1667 s | 10 m, 0.0333 s |
+| Simulated time / timesteps | 1000 s / 6,000 | 500 s / 15,000 |
+| 2 × state, `(nx+4)(nz+4)·4` | 5.0 MiB | 122.8 MiB |
+| flux `(nx+1)(nz+1)·4` | 2.5 MiB | 61.1 MiB |
+| tendency `nx·nz·4` | 2.4 MiB | 61.0 MiB |
+| **Working set** | **10.0 MiB** | **245.2 MiB** |
+| Cell-updates | 4.8 × 10⁸ | 3.0 × 10¹⁰ |
+| FLOPs (≈) | 274 GFLOP | 17.1 TFLOP |
+
+The 10 MiB working set at NX = 400 fits in L3 on these nodes, which is why the serial profile shows a
+3.01% L1-d miss rate and 74.6% bad speculation — the code is branch-bound, not memory-starved.
+
+FLOP counts are hand-counted from the stencil body: ≈87 flops per cell per directional sweep, six
+sweeps per timestep (3 RK stages × 2 directions), plus the state update. Divisions count as one and the
+`**cdocv` power is excluded, so treat it as ±20% and a lower bound on real work.
 
 ### CPU, NX = 400
 
-| Configuration | Time | Speedup |
-|---|---:|---:|
-| 1 rank, 1 thread (baseline) | 190.1 s | 1× |
-| 1 rank, 32 threads | 18.2 s | 10.4× |
-| 4 ranks × 8 threads, 1 node | 9.5 s | 20.0× |
-| **16 ranks × 2 threads, 8 nodes** | **2.14 s** | **88.8×** |
+| Configuration | Time | Speedup | Mcell-upd/s | GFLOP/s |
+|---|---:|---:|---:|---:|
+| 1 rank, 1 thread (baseline) | 190.1 s | 1× | 2.5 | 1.4 |
+| 1 rank, 32 threads | 18.2 s | 10.4× | 26.4 | 15.0 |
+| 4 ranks × 8 threads, 1 node | 9.5 s | 20.0× | 50.5 | 28.8 |
+| **16 ranks × 2 threads, 8 nodes** | **2.14 s** | **88.8×** | **224.3** | **127.9** |
 
 Hybrid MPI+OpenMP beat pure OpenMP at the same core count on one node — 9.5 s against 18.2 s. Four
 ranks pinned to their own NUMA domains beat one rank spanning the socket.
 
 ### Multi-GPU, nx = 2000, nz = 1000
 
-| GPUs | Time | Communication |
-|---:|---:|---:|
-| 1 | 58.2 s | 0% |
-| 4 | 23.3 s | 4% |
-| 8 | 17.6 s | 10% |
-| 12 | 17.5 s | 21% |
-| 16 | 18.2 s | 24% |
+| GPUs | Time | Mcell-upd/s | GFLOP/s | Communication | Working set per GPU |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 58.2 s | 516 | 294 | 0% | 245 MiB |
+| 4 | 23.3 s | 1288 | 734 | 4% | 61 MiB |
+| 8 | 17.6 s | 1705 | 972 | 10% | 31 MiB |
+| 12 | 17.5 s | 1714 | 977 | 21% | 20 MiB |
+| 16 | 18.2 s | 1648 | 939 | 24% | 15 MiB |
 
 **Scaling stops at 8 GPUs.** The timer says why: communication climbs from 0% to 24% of runtime as the
-per-device subdomain shrinks. Past 8 GPUs the halo exchange costs more than the compute it saves.
-Overlapping communication with computation is the obvious next step and we didn't get to it.
+per-device subdomain shrinks. By 16 GPUs each card holds 15 MiB and does almost no work per timestep,
+while the halo exchange cost stays roughly fixed. Overlapping communication with computation is the
+obvious next step and we didn't get to it.
+
+Single-GPU throughput of 294 GFLOP/s is about 3% of the A100's 9.7 TFLOP/s fp64 peak — expected for a
+low arithmetic-intensity stencil carrying divisions and a power call.
 
 ### CPU vs GPU, per component
 
-128 MPI × 2 OMP (256 cores) against 8 GPUs on 2 nodes.
+128 MPI × 2 OMP (256 cores) against 8 GPUs on 2 nodes, nx = 2000, nz = 1000, 1000 s simulated.
 
 | Component | CPU | GPU | Speedup |
 |---|---:|---:|---:|
