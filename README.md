@@ -1,7 +1,7 @@
 # miniWeather — MPI / OpenMP / OpenACC port
 
 Taking an existing serial Fortran weather model and making it run on 256 CPU cores and on 16 GPUs.
-190 s down to 2.1 s on CPUs; another 8.2× on GPUs.
+190 s down to 2.1 s on CPU, and another 8.2× on GPU.
 
 **Stack:** Fortran · MPI · OpenMP · OpenACC · NetCDF · CMake · Docker · GitHub Actions · Nsight
 Systems / NVTX · `perf` · SLURM · Leonardo Booster (A100)
@@ -18,10 +18,10 @@ High Performance Computing (ICTP / SISSA, Trieste), Nov–Dec 2025.
 Laboratory (2018) and NVIDIA (2021). BSD licensed — the licence is in [`LICENSE`](LICENSE) and stays
 there.
 
-Norman wrote the physics: the 2-D compressible Euler equations for a stratified atmosphere,
-finite-volume discretisation with fourth-order flux interpolation, dimensional splitting, three-stage
-Runge–Kutta, hyperviscosity. miniWeather exists specifically as a teaching code for parallel
-programming, which is what it was used for here.
+Norman wrote the physics: 2-D compressible Euler equations for a stratified atmosphere, finite-volume
+discretisation with fourth-order flux interpolation, dimensional splitting, three-stage Runge-Kutta,
+hyperviscosity. miniWeather is written to be a teaching code for parallel programming, which is exactly
+what we used it for.
 
 Everything below is what we added on top of it.
 
@@ -64,12 +64,13 @@ Everything is **double precision** (`wp = real64`, 8 bytes). Four prognostic var
 | Cell-updates | 4.8 × 10⁸ | 3.0 × 10¹⁰ |
 | FLOPs (≈) | 274 GFLOP | 17.1 TFLOP |
 
-The 10 MiB working set at NX = 400 fits in L3 on these nodes, which is why the serial profile shows a
-3.01% L1-d miss rate and 74.6% bad speculation — the code is branch-bound, not memory-starved.
+At NX = 400 the whole working set is 10 MiB, which fits in L3 on these nodes. That's why the serial
+profile shows only a 3.01% L1-d miss rate but 74.6% bad speculation — the bottleneck is branching, not
+memory.
 
-FLOP counts are hand-counted from the stencil body: ≈87 flops per cell per directional sweep, six
-sweeps per timestep (3 RK stages × 2 directions), plus the state update. Divisions count as one and the
-`**cdocv` power is excluded, so treat it as ±20% and a lower bound on real work.
+FLOP counts are counted by hand from the stencil body: about 87 flops per cell per directional sweep,
+six sweeps per timestep (3 RK stages × 2 directions), plus the state update. Divisions count as one and
+the `**cdocv` power is left out, so take it as ±20% and a lower bound.
 
 ### CPU, NX = 400
 
@@ -80,8 +81,8 @@ sweeps per timestep (3 RK stages × 2 directions), plus the state update. Divisi
 | 4 ranks × 8 threads, 1 node | 9.5 s | 20.0× | 50.5 | 28.8 |
 | **16 ranks × 2 threads, 8 nodes** | **2.14 s** | **88.8×** | **224.3** | **127.9** |
 
-Hybrid MPI+OpenMP beat pure OpenMP at the same core count on one node — 9.5 s against 18.2 s. Four
-ranks pinned to their own NUMA domains beat one rank spanning the socket.
+MPI+OpenMP beat pure OpenMP at the same core count on one node, 9.5 s against 18.2 s. Four ranks each
+pinned to their own NUMA domain do better than one rank spread across the whole socket.
 
 ### Multi-GPU, nx = 2000, nz = 1000
 
@@ -93,13 +94,13 @@ ranks pinned to their own NUMA domains beat one rank spanning the socket.
 | 12 | 17.5 s | 1714 | 977 | 21% | 20 MiB |
 | 16 | 18.2 s | 1648 | 939 | 24% | 15 MiB |
 
-**Scaling stops at 8 GPUs.** The timer says why: communication climbs from 0% to 24% of runtime as the
-per-device subdomain shrinks. By 16 GPUs each card holds 15 MiB and does almost no work per timestep,
-while the halo exchange cost stays roughly fixed. Overlapping communication with computation is the
-obvious next step and we didn't get to it.
+**Scaling stops at 8 GPUs.** The timer shows why: communication goes from 0% to 24% of the runtime as
+each GPU gets a smaller piece of the grid. At 16 GPUs a card holds 15 MiB and barely does any work per
+timestep, but the halo exchange still costs the same. The fix is to overlap communication with
+computation. We didn't get to it.
 
-Single-GPU throughput of 294 GFLOP/s is about 3% of the A100's 9.7 TFLOP/s fp64 peak — expected for a
-low arithmetic-intensity stencil carrying divisions and a power call.
+294 GFLOP/s on one GPU is about 3% of the A100's 9.7 TFLOP/s fp64 peak. That's normal for a stencil
+like this: not much arithmetic per byte loaded, plus divisions and a power call.
 
 ### CPU vs GPU, per component
 
@@ -112,9 +113,9 @@ low arithmetic-intensity stencil carrying divisions and a power call.
 | Init / thermal / hydrostatic | — | — | 0.03–0.07× |
 | **Total** | | | **8.20×** |
 
-The setup routines are 25–30× *slower* on GPU. They run once, they aren't offloaded, and they pay
-device initialisation. It doesn't matter over a real run length, but it's there. Communication improves
-18.5× mostly because 8 ranks exchange far less than 128 do.
+The setup routines are 25-30× *slower* on GPU. They run once, they're not offloaded, and they pay for
+device init. Over a real run length it doesn't matter, but it's there. Communication looks 18.5× better
+mostly because 8 ranks have far less to exchange than 128.
 
 ![CPU vs GPU](results/plots/cpu_vs_gpu_comparison.png)
 ![Scaling](results/plots/scaling_analysis.png)
@@ -172,12 +173,12 @@ Releases went out as `dev → main` PRs. 40 PRs across three people.
 
 **CI.** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) builds the Docker image (Buildx, with the
 Actions cache as backend) and runs the tests inside it. About 50 seconds, so review never waited on it.
-Building the image rather than compiling directly is what keeps local, CI and cluster identical.
+Building the image instead of compiling directly is what keeps local, CI and cluster the same.
 
-**Tests.** Two checks. First, physical conservation — the run passes only if fractional mass drift is
-below 1e-13 and energy drift below 1e-3. A broken halo exchange shows up immediately as mass appearing
-or disappearing. Second, an output comparison against reference NetCDF files via `nccmp3.py`. Both run
-against every configuration, so a GPU result that diverged from the CPU result got caught.
+**Tests.** Two checks. First, conservation: the run passes only if fractional mass drift is under 1e-13
+and energy drift under 1e-3. A broken halo exchange shows up straight away as mass appearing or
+disappearing. Second, comparing the output NetCDF against reference files with `nccmp3.py`. Both run on
+every configuration, so if a GPU result drifted from the CPU one we'd know.
 
 *Note:* the reference `.nc` files were never committed, so the comparison currently no-ops and only the
 conservation check runs. Worth fixing.
@@ -185,12 +186,13 @@ conservation check runs. Worth fixing.
 **Profiling.** `perf stat` on the serial build first: 256 s, 2.02 trillion instructions, 2.40 IPC, 3.01%
 L1-d miss, 3.06% LLC miss — and **74.6% bad speculation**. Not memory-starved, branch-bound.
 
-Then the timer, which localised the cost immediately: `Computation: step` was 190.08 s of a 190.10 s
-run. 99.99%. Everything after that targeted one routine. Timing covers computation and communication
-and deliberately excludes file I/O, which would otherwise dominate and hide what we were optimising.
+Then the timer, which found the hot spot immediately: `Computation: step` was 190.08 s of a 190.10 s
+run. 99.99%. Everything after that went into one routine. The timer covers computation and
+communication and deliberately skips file I/O, which would otherwise dominate and hide what we were
+trying to fix.
 
-On GPU, NVTX ranges around the transfers and compute regions, so Nsight traces show `Halo Exchange X`
-and `Runge-Kutta Integration` as named spans per rank instead of anonymous kernels.
+On GPU we added NVTX ranges around the transfers and compute regions, so Nsight traces show
+`Halo Exchange X` and `Runge-Kutta Integration` as named spans per rank instead of unnamed kernels.
 
 **Then the loop:** profile → find the hot spot → change it → re-check scaling → repeat.
 
@@ -204,8 +206,8 @@ periodic neighbours.
 reduce with `MPI_Allreduce`.
 
 **GPU data residency.** `enter data create/copyin/attach` at setup, `update self` only when output is
-actually needed, `exit data delete` at teardown. Compute regions use `present(...)` rather than implicit
-copies, so nothing silently round-trips every timestep.
+actually needed, `exit data delete` at teardown. Compute regions use `present(...)` instead of implicit
+copies, so nothing quietly copies back and forth every timestep.
 
 **GPU-aware MPI.** Halo exchange uses `!$acc host_data use_device(...)`, handing device pointers straight
 to MPI so buffers move device-to-device without staging through the host. Halo buffers are allocated
@@ -213,13 +215,13 @@ once and stay resident.
 
 ## What we'd do differently
 
-Overlap communication with computation — the multi-GPU table shows exactly what that's worth. And run
-the tests on the cluster from CI, not just in a container on GitHub's runners, so cluster-only toolchain
-failures get caught by the pipeline instead of by a person.
+Overlap communication with computation. The multi-GPU table shows exactly what that's worth. And run
+the tests on the cluster from CI, not just in a container on GitHub's runners, so toolchain failures
+that only happen on the cluster get caught by the pipeline instead of by a person.
 
-Smaller lessons: module load order matters and produces baffling link errors when wrong. One GPU per
-rank. Check results every time, not just when something looks off. Profile even when the code looks
-fine — the 74.6% bad-speculation number was invisible until measured.
+Smaller lessons: module load order matters, and gives you confusing link errors when it's wrong. One
+GPU per rank. Check your results every time, not just when something looks off. Profile even when the
+code seems fine — nobody would have guessed the 74.6% bad speculation without measuring it.
 
 ## Layout
 
