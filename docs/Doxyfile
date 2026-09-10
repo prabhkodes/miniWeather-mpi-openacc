@@ -10,7 +10,7 @@ MARKDOWN_SUPPORT       = YES
 
 # ---- Input ----
 # Where your source lives
-INPUT                  = ../..
+INPUT                  = @CMAKE_SOURCE_DIR@/src
 RECURSIVE              = NO
 
 # Only look at Fortran sources (and maybe CMake, etc, if you want)

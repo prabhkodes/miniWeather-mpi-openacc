@@ -6,9 +6,9 @@ the result.
 
 Coursework for *P1.8 — Best Practices in Scientific Software Development*, Master in High Performance
 Computing (ICTP / SISSA, Trieste), Nov–Dec 2025. Full write-up in
-[`miniweather-port-presentation.pdf`](miniweather-port-presentation.pdf).
+[`docs/presentation.pdf`](docs/presentation.pdf).
 
-![Simulation](code/results/movie0100.jpeg)
+![Simulation](results/plots/movie0100.jpeg)
 
 > **This is a presentation copy.** The project was developed by three people in
 > [`prabhkodes/fightClub`](https://github.com/prabhkodes/fightClub) — that repository holds the full
@@ -20,7 +20,7 @@ Computing (ICTP / SISSA, Trieste), Nov–Dec 2025. Full write-up in
 **The solver is not ours.** The 2-D compressible Euler dynamical core — finite-volume discretisation,
 dimensional splitting, RK3, hyperviscosity — is [**miniWeather**](https://github.com/mrnorman/miniWeather)
 by Matthew R. Norman (ORNL 2018, NVIDIA 2021), used under its BSD licence
-([`code/serial/LICENSE`](code/serial/LICENSE)). It is written as a parallel-programming training app.
+([`LICENSE`](LICENSE)). It is written as a parallel-programming training app.
 
 The work here is the port, the engineering around it, and the measurement.
 
@@ -166,8 +166,8 @@ as the per-device subdomain shrinks. Past 8 GPUs the halo exchange costs more th
 This is the single clearest argument for the retrospective item below — overlapping communication with
 computation is the obvious next optimisation.
 
-![CPU vs GPU](code/results/gpu/cpu_vs_gpu_comparison.png)
-![Scaling](code/results/gpu/scaling_analysis.png)
+![CPU vs GPU](results/plots/cpu_vs_gpu_comparison.png)
+![Scaling](results/plots/scaling_analysis.png)
 
 ### CPU vs GPU, component by component
 
@@ -190,14 +190,14 @@ than quoting the total alone. Communication improves 18.5× mostly because 8 ran
 ### CPU baseline profile
 
 `perf stat`: 2.40 IPC, 3.01% L1-d miss, 3.06% LLC miss, **74.6% bad speculation**. Full counters in
-[`perf_results/base_perf.txt`](perf_results/base_perf.txt).
+[`results/cpu/base_perf.txt`](results/cpu/base_perf.txt).
 
 ## My contribution — @prabhkodes
 
 | What | Where | PRs |
 |---|---|---|
-| **Parallel timing framework** — written from scratch. Scoped `CTimer` with a Fortran `final` binding; per-routine max / exclusive / average / call count reduced across all ranks. Every performance number in this repo was measured with it. | [`parallel_timer.f90`](code/serial/parallel_timer.f90) | [#3](https://github.com/prabhkodes/fightClub/pull/3) [#14](https://github.com/prabhkodes/fightClub/pull/14) [#17](https://github.com/prabhkodes/fightClub/pull/17) |
-| **Parallel NetCDF output** — authored the module. Per-rank hyperslab writes into one shared file, unlimited time dimension. | [`module_output.F90`](code/serial/module_output.F90) | [#30](https://github.com/prabhkodes/fightClub/pull/30) [#36](https://github.com/prabhkodes/fightClub/pull/36) |
+| **Parallel timing framework** — written from scratch. Scoped `CTimer` with a Fortran `final` binding; per-routine max / exclusive / average / call count reduced across all ranks. Every performance number in this repo was measured with it. | [`parallel_timer.f90`](src/parallel_timer.f90) | [#3](https://github.com/prabhkodes/fightClub/pull/3) [#14](https://github.com/prabhkodes/fightClub/pull/14) [#17](https://github.com/prabhkodes/fightClub/pull/17) |
+| **Parallel NetCDF output** — authored the module. Per-rank hyperslab writes into one shared file, unlimited time dimension. | [`module_output.F90`](src/module_output.F90) | [#30](https://github.com/prabhkodes/fightClub/pull/30) [#36](https://github.com/prabhkodes/fightClub/pull/36) |
 | **OpenMP threading of the tendency stencils** — the *x*/*z* tendency loops, innermost hot loops of the RK stages. | `module_types.F90` | [#20](https://github.com/prabhkodes/fightClub/pull/20) |
 | **MPI ↔ OpenACC integration** — reconciled the distributed and GPU branches into one source tree building CPU-only, MPI+OpenMP and MPI+OpenACC. | 6 files | [#34](https://github.com/prabhkodes/fightClub/pull/34) |
 | **Benchmark harness and the scaling campaign** — I/O-free benchmark mode, SLURM sweeps, every CPU and multi-GPU run above, `perf` collection. | `submit_sweep.sh`, `nvtx_batch.sh` | [#39](https://github.com/prabhkodes/fightClub/pull/39) [#21](https://github.com/prabhkodes/fightClub/pull/21) [#25](https://github.com/prabhkodes/fightClub/pull/25) [#43](https://github.com/prabhkodes/fightClub/pull/43) [#46](https://github.com/prabhkodes/fightClub/pull/46) |
@@ -229,33 +229,45 @@ the code appears to work — the 74.6% bad-speculation figure was invisible unti
 
 ## Build and run
 
-Needs `cmake`, `gfortran` (or `nvfortran`), MPI, `netcdf-fortran`; `doxygen`/`graphviz` for docs.
-`./runenv.sh` gives you all of it in Docker instead.
+Needs `cmake`, `gfortran` (or `nvfortran`), MPI, and `netcdf-fortran`; `doxygen` and `graphviz` for the
+docs. `scripts/runenv.sh` provides all of it in Docker instead.
 
 ```bash
-cd code/serial && mkdir build && cd build
-cmake ..                      # MPI + OpenMP
-cmake .. -DUSE_OPENACC=ON     # MPI + OpenACC, on a GPU system
-make -j4
-make test                     # conservation + NetCDF regression
-mpirun -n 4 ./model 100 1000 10   # nx, timesteps, output frequency
+cmake -S . -B build                      # MPI + OpenMP
+cmake -S . -B build -DUSE_OPENACC=ON     # MPI + OpenACC, on a GPU system
+cmake --build build -j
+ctest --test-dir build --output-on-failure
 ```
 
-Writes `output.nc` — view with `ncview` or VisIt. SLURM scripts for Leonardo (native, containerised,
-InfiniBand-forced, Nsight-profiling) are in [`code/serial/`](code/serial/).
+```bash
+mpirun -n 4 ./build/model 100 1000 10    # nx, timesteps, output frequency
+```
 
----
+Writes `output.nc` — view with `ncview` or VisIt. `cmake --build build --target doc` generates the
+Doxygen documentation into `build/doc/html/`.
+
+Verified building and passing `ctest` on macOS/arm64 with Homebrew gfortran 14, Open MPI 5.0 and
+netcdf-fortran 4.6, and in the Ubuntu 22.04 container used by CI.
 
 ## Layout
 
 ```
-code/
-  serial/          model source, CMake project, SLURM scripts, Doxygen config
-  results/         plots, run logs
-perf_results/      CPU performance counter statistics
-.github/workflows/ci.yml    containerised regression tests
-Dockerfile         build and run environment
-runenv.sh          initialise the containerised environment
+CMakeLists.txt          single build system; -DUSE_OPENACC=ON switches toolchain
+Dockerfile              reproducible build/run environment
+LICENSE                 miniWeather BSD licence (ORNL / NVIDIA)
+src/                    Fortran sources
+tests/                  nccmp3.py NetCDF comparator, Python requirements
+scripts/
+  runenv.sh             build the image and shell into it
+  slurm/                Leonardo batch scripts and the scaling sweep
+  profiling/            Nsight Systems / NVTX job scripts
+docs/                   Doxyfile, CSS themes, physics notes, presentation
+results/
+  plots/                figures used in this README and the deck
+  cpu/                  CPU run logs and perf counters
+  gpu/                  multi-GPU run logs, Nsight session view
+  analysis/             plotting scripts that produced the figures
+.github/workflows/      containerised CI
 ```
 
 | Source file | Contents |
@@ -266,7 +278,7 @@ runenv.sh          initialise the containerised environment
 | `module_parameters.f90` | Domain decomposition and solver parameters, physical constants |
 | `module_output.F90` | Parallel NetCDF output |
 | `parallel_timer.f90` | Per-routine timing reduced across all ranks |
-| `module_nvtx.f90` | NVTX range annotations for Nsight Systems |
+| `module_nvtx.F90` | NVTX ranges for Nsight; no-ops when built without NVTX |
 
 ## Running on Leonardo
 You can see the slurm scripts to see how the program was built and run on the cluster:
@@ -343,5 +355,5 @@ pyenv/bin/python nccmp3.py output-serial.nc output-serial-optimized.nc output.nc
 
 ## Licence
 
-miniWeather is BSD-licensed by ORNL and NVIDIA ([`code/serial/LICENSE`](code/serial/LICENSE)).
+miniWeather is BSD-licensed by ORNL and NVIDIA ([`LICENSE`](LICENSE)).
 Modifications are released under the same terms.

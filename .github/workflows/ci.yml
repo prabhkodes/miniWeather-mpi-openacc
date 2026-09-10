@@ -29,9 +29,9 @@ jobs:
           cache-from: type=gha  # use GitHub Actions cache as buildx cache backend
           cache-to: type=gha,mode=max
 
-      - name: Run tests in Docker container
+      - name: Configure, build and test in container
         run: |
           docker run --rm \
-            -v "${{ github.workspace }}/code/serial:/app" \
+            -v "${{ github.workspace }}:/app" \
             atmosphere-model:latest \
-            make test
+            bash -c "cmake -S . -B build && cmake --build build -j && ctest --test-dir build --output-on-failure"

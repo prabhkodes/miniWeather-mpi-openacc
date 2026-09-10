@@ -1,49 +1,24 @@
-*
-!/**/
-!*.*
-*nc
-!Doxyfile
-
-
-
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
+# Build output
+build/
 *.o
-*.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Linker files
-*.ilk
-
-# Debugger Files
-*.pdb
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
 *.mod
 *.smod
+*.x
+model
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
+# Run artefacts
+*.nc
+!tests/reference/*.nc
+slurm-*.out
+slurm-*.err
+logs/
+*.nsys-rep
+*.sqlite
 
-# Executables
-*.exe
-*.out
-*.app
+# Python
+__pycache__/
+pyenv/
+.venv/
 
-# debug information files
-*.dwo
+# OS
+.DS_Store

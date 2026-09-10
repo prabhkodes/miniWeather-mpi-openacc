@@ -36,12 +36,13 @@ find_package(MPI REQUIRED Fortran)
 # Source files
 # ------------------------------------------------------------
 set(MODEL_SOURCES
-    module_parameters.f90
-    module_types.F90
-    module_output.F90
-    module_physics.f90
-    parallel_timer.f90
-    model.F90
+    src/module_parameters.f90
+    src/module_nvtx.F90
+    src/parallel_timer.f90
+    src/module_types.F90
+    src/module_output.F90
+    src/module_physics.f90
+    src/model.F90
 )
 
 add_executable(model ${MODEL_SOURCES})
@@ -55,7 +56,10 @@ target_compile_options(model PRIVATE ${NF_FFLAGS})
 # Choose between OpenACC and OpenMP-style build
 if(USE_OPENACC)
     message(STATUS "Building with OpenACC (NVHPC)")
-    target_compile_definitions(model PRIVATE USE_OPENACC)
+    target_compile_definitions(model PRIVATE USE_OPENACC USE_NVTX)
+    # NVTX ranges need NVIDIA's libnvToolsExt; without it module_nvtx
+    # compiles to no-ops (see src/module_nvtx.F90).
+    target_link_libraries(model PRIVATE nvToolsExt)
     target_compile_options(model PRIVATE
         -fast
         -Minfo=accel
@@ -89,7 +93,11 @@ endif()
 # ------------------------------------------------------------
 # NetCDF Fortran & C libs from nf-config / nc-config
 # NF_FLIBS typically contains things like: -L<dir> -lnetcdff -lnetcdf ...
-link_directories(${NC_LIBDIR})
+# target_link_directories is target-scoped and order-independent; the older
+# link_directories() only affects targets created after it, so it silently did
+# nothing here and broke on installs where netcdf-c and netcdf-fortran live in
+# separate prefixes (e.g. Homebrew).
+target_link_directories(model PRIVATE ${NC_LIBDIR})
 target_link_libraries(model PRIVATE ${NF_FLIBS} MPI::MPI_Fortran)
 
 # ------------------------------------------------------------
@@ -97,13 +105,13 @@ target_link_libraries(model PRIVATE ${NF_FLIBS} MPI::MPI_Fortran)
 # ------------------------------------------------------------
 find_package(Doxygen)
 if(Doxygen_FOUND)
-    set(DOXYGEN_IN  ${CMAKE_SOURCE_DIR}/doc/Doxyfile) # original config file
+    set(DOXYGEN_IN  ${CMAKE_SOURCE_DIR}/docs/Doxyfile) # original config file
     set(DOXYGEN_OUT ${CMAKE_BINARY_DIR}/doc/Doxyfile) # where to store inside 'build' folder
-    # set(DOXYGEN_MD_IN  ${CMAKE_SOURCE_DIR}/doc/README.md) # original config file
+    # set(DOXYGEN_MD_IN  ${CMAKE_SOURCE_DIR}/docs/README.md) # original config file
     # set(DOXYGEN_MD_OUT ${CMAKE_BINARY_DIR}/doc/README.md) # where to store inside 'build' folder
-    set(DOXYGEN_STYLE1_IN  ${CMAKE_SOURCE_DIR}/doc/custom.css) # original config file
+    set(DOXYGEN_STYLE1_IN  ${CMAKE_SOURCE_DIR}/docs/custom.css) # original config file
     set(DOXYGEN_STYLE1_OUT ${CMAKE_BINARY_DIR}/doc/custom.css) # where to store inside 'build' folder
-    set(DOXYGEN_STYLE2_IN  ${CMAKE_SOURCE_DIR}/doc/custom_dark_theme.css) # original config file
+    set(DOXYGEN_STYLE2_IN  ${CMAKE_SOURCE_DIR}/docs/custom_dark_theme.css) # original config file
     set(DOXYGEN_STYLE2_OUT ${CMAKE_BINARY_DIR}/doc/custom_dark_theme.css) # where to store inside 'build' folder
 
     configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
@@ -127,8 +135,8 @@ enable_testing()
 # If reference NetCDF files are in the source dir, copy them to the build dir
 # so the test can find them.
 file(GLOB REF_NC_FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/output-serial.nc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/output-serial-optimized.nc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/reference/output-serial.nc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/reference/output-serial-optimized.nc"
 )
 if(REF_NC_FILES)
     file(COPY ${REF_NC_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
@@ -155,7 +163,7 @@ add_test(
     #  echo \"TEST: Compare output with reference output file...\"; \
     #  IMPROVEMENT as of now we need to manually create virtual env. see `requirements.txt` for more details.
     #  TODO create virtual env automatically, install packages and use it before running the test. will leave this for now.
-    #  pyenv/bin/python3 ${CMAKE_CURRENT_SOURCE_DIR}/nccmp3.py output-serial.nc output-serial-optimized.nc output.nc"
+    #  pyenv/bin/python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/nccmp3.py output-serial.nc output-serial-optimized.nc output.nc"
 )
 
 # Ensure test runs in the build directory (where ./model and output.nc live)
