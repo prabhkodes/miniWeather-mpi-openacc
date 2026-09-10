@@ -1,5 +1,16 @@
 # miniWeather — MPI / OpenMP / OpenACC port
 
+![Fortran](https://img.shields.io/badge/Fortran-734F96?style=flat-square&logo=fortran&logoColor=white)
+![MPI](https://img.shields.io/badge/MPI-364d6e?style=flat-square&logoColor=white)
+![OpenMP](https://img.shields.io/badge/OpenMP-006DB8?style=flat-square&logoColor=white)
+![OpenACC](https://img.shields.io/badge/OpenACC-FF6200?style=flat-square&logoColor=white)
+![NetCDF](https://img.shields.io/badge/NetCDF-0096D6?style=flat-square&logoColor=white)
+![CMake](https://img.shields.io/badge/CMake-064F8C?style=flat-square&logo=cmake&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)
+![Nsight](https://img.shields.io/badge/Nsight-76B900?style=flat-square&logo=nvidia&logoColor=white)
+![SLURM](https://img.shields.io/badge/SLURM-46a2f1?style=flat-square&logoColor=white)
+
 Taking an existing serial Fortran weather model and making it run on 256 CPU cores and on 16 GPUs.
 
 | | |
