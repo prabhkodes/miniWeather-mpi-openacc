@@ -4,7 +4,11 @@ Taking an existing serial Fortran weather model and making it run on 256 CPU cor
 190 s down to 2.1 s on CPU, and another 8.2× on GPU.
 
 **Stack:** Fortran · MPI · OpenMP · OpenACC · NetCDF · CMake · Docker · GitHub Actions · Nsight
-Systems / NVTX · `perf` · SLURM · Leonardo Booster (A100)
+Systems / NVTX · `perf` · SLURM
+
+**Where it ran:** every number below is from **Leonardo Booster** at CINECA — Intel Ice Lake Xeon 8358,
+32 cores per node, 4× A100 64 GB per node, 200 Gbps HDR InfiniBand. CPU runs up to 16 nodes (512
+cores), GPU runs up to 16 A100s.
 
 **Team of three.** Coursework for *P1.8 — Best Practices in Scientific Software Development*, Master in
 High Performance Computing (ICTP / SISSA, Trieste), Nov–Dec 2025.
@@ -44,8 +48,6 @@ Full write-up in [`docs/presentation.pdf`](docs/presentation.pdf).
 
 ## Results
 
-Leonardo Booster (CINECA) — Intel Ice Lake Xeon 8358, 32 cores/node, 4× A100 64 GB per node.
-
 ### What is actually being measured
 
 Everything is **double precision** (`wp = real64`, 8 bytes). Four prognostic variables — density,
@@ -72,17 +74,42 @@ FLOP counts are counted by hand from the stencil body: about 87 flops per cell p
 six sweeps per timestep (3 RK stages × 2 directions), plus the state update. Divisions count as one and
 the `**cdocv` power is left out, so take it as ±20% and a lower bound.
 
-### CPU, NX = 400
+### CPU, NX = 400 — OpenMP and MPI+OpenMP
 
-| Configuration | Time | Speedup | Mcell-upd/s | GFLOP/s |
-|---|---:|---:|---:|---:|
-| 1 rank, 1 thread (baseline) | 190.1 s | 1× | 2.5 | 1.4 |
-| 1 rank, 32 threads | 18.2 s | 10.4× | 26.4 | 15.0 |
-| 4 ranks × 8 threads, 1 node | 9.5 s | 20.0× | 50.5 | 28.8 |
-| **16 ranks × 2 threads, 8 nodes** | **2.14 s** | **88.8×** | **224.3** | **127.9** |
+![CPU scaling](results/plots/combined_summary_plot.png)
 
-MPI+OpenMP beat pure OpenMP at the same core count on one node, 9.5 s against 18.2 s. Four ranks each
-pinned to their own NUMA domain do better than one rank spread across the whole socket.
+19 configurations from 1 to 16 nodes, blue is computation and red is communication, log scale.
+`N` = nodes, `R` = MPI ranks, `T` = OpenMP threads per rank.
+
+| Configuration | Cores | Time | Speedup | Mcell-upd/s | GFLOP/s |
+|---|---:|---:|---:|---:|---:|
+| 1 rank, 1 thread (baseline) | 1 | 190.1 s | 1× | 2.5 | 1.4 |
+| 1N 1R 8T | 32 | 37.3 s | 5.1× | 12.9 | 7.3 |
+| 1N 1R 32T | 32 | 18.2 s | 10.4× | 26.3 | 15.0 |
+| 1N 4R 8T | 32 | 9.5 s | 19.9× | 50.3 | 28.7 |
+| 2N 8R 8T | 64 | 4.99 s | 38.1× | 96.2 | 54.8 |
+| 4N 16R 8T | 128 | 2.76 s | 68.9× | 173.9 | 99.1 |
+| 4N 64R 2T | 128 | 2.68 s | 70.9× | 179.1 | 102.1 |
+| **8N 128R 2T** | **256** | **2.14 s** | **88.8×** | **224.3** | **127.9** |
+| 16N 16R 32T | 512 | 2.60 s | 73.1× | 184.6 | 105.2 |
+
+Three things the plot shows that the numbers alone don't:
+
+**Ranks beat threads at the same core count.** On one node, 4 ranks × 8 threads finishes in 9.5 s while
+1 rank × 32 threads takes 18.2 s. Same 32 cores. Four ranks each sit in their own NUMA domain; one rank
+spread across the socket keeps reaching into memory attached to a different one.
+
+**Getting the rank/thread split wrong costs more than adding hardware saves.** 2N 2R 1T — two nodes,
+one thread per rank — took 89.1 s, worse than a single node doing almost anything else. Two ranks on 64
+cores leaves 62 of them idle.
+
+**Past 8 nodes it gets slower, and you can see why.** The red block grows until at 16 nodes
+communication is most of the runtime. Best time is 2.14 s on 8 nodes; 16 nodes gives 2.60 s. At NX=400
+the whole grid is 80,000 cells, so by 512 cores each core owns about 156 cells and spends more time
+exchanging halos than updating them.
+
+`results/plots/stacked_histogram_clean.png` is a filtered view of the same runs, and
+`results/analysis/` has the scripts that produced both.
 
 ### Multi-GPU, nx = 2000, nz = 1000
 
