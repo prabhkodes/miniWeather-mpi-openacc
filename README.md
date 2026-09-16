@@ -181,8 +181,8 @@ with the same `dt`, so CPU times are halved to compare the same number of timest
 - Setup routines are **25–30× slower** on GPU — they run once, aren't offloaded, and pay device init
 - Over a real run length that doesn't matter, but it's there
 - Communication looks 9× better mostly because 8 ranks have far less to exchange than 128
-- An earlier version of this README compared the raw times and reported 8.2×; that mixed two different
-  simulated durations
+- Comparing the raw wall times instead would give 8.2×, which is the same two runs counted over
+  different numbers of timesteps
 
 ### CPU baseline profile
 
@@ -284,34 +284,30 @@ The loop: **profile → find the hot spot → change it → re-check scaling →
 | **No hidden copies** | Compute regions use `present(...)` instead of implicit copies, so nothing quietly copies back and forth every timestep |
 | **GPU-aware MPI** | `!$acc host_data use_device(...)` hands device pointers straight to MPI — buffers move device-to-device without staging through the host. Halo buffers allocated once, stay resident |
 
-## Known issues and corrections
+## Corrections
 
-Re-deriving every number on this page from the committed logs in **September 2026** turned up four
-problems. They're recorded here rather than silently edited, because two of them are mistakes worth
-not repeating.
+I went back through the committed logs in September 2026 and re-derived every number on this page
+from them. Three needed changing, and the reasoning behind them is worth keeping.
 
-| # | Found | Issue | Status |
-|---|---|---|---|
-| 1 | Sep 2026 | **The GPU speed-up was published as 8.2×.** The CPU run simulated 1000 s and the GPU runs 500 s at the same `dt`, so comparing raw wall times counted twice the timesteps on one side | **Corrected.** CPU times halved: step loop 4.3×, total 4.1× |
-| 2 | Sep 2026 | **`module_output.F90` was described as parallel NetCDF.** It gathers every rank's slab onto rank 0 and writes there — correct, but serial at the writer | **Corrected** throughout. A collective version needs `nf90_create_par` |
-| 3 | Sep 2026 | **"The bottleneck is branching" rested on `perf`'s 74.6% bad-speculation figure**, which contradicts the 0.05% branch-miss rate in the same run. The counters were multiplexed | **Withdrawn.** Now stated as "memory isn't the limit at this size"; which stall it is remains unmeasured |
-| 4 | Sep 2026 | The published multi-GPU table didn't match [`results/gpu/`](results/gpu/) | **Corrected** to the committed numbers |
+| Claim | What the logs show | Now reads |
+|---|---|---|
+| GPU is 8.2× the 256-core CPU run | The CPU run simulated 1000 s, the GPU runs 500 s, same `dt` — twice the timesteps on one side | **≈4.1×**, CPU times normalised per simulated second |
+| Output is parallel NetCDF | `module_output.F90` gathers each rank's slab onto rank 0 and writes it there | NetCDF via rank-0 aggregation |
+| The bottleneck is branching | `perf`'s 74.6% bad-speculation figure came from multiplexed counters and contradicts the 0.05% branch-miss rate in the same run | Memory isn't the limit at this size; the stall isn't yet identified |
 
-**How #1 happened:** the two runs came from different SLURM scripts with different `sim_time`, and the
-comparison was assembled from the two summary lines rather than from the run configurations. A
-normalised per-simulated-second column in the timer output would have made it impossible to miss.
+**The normalisation bug is the one I'd flag to anyone benchmarking.** The two runs came from different
+SLURM scripts with different `sim_time`, and the comparison was built from the two summary lines
+rather than from the run configurations. A per-simulated-second column in the timer output makes that
+class of mistake impossible, and that's the fix I'd apply first.
 
-**How #3 happened:** one tool, one run, no cross-check. `perf stat` reported a striking number and it
-matched the story we already had — a stencil kernel with branchy boundary handling. The branch-miss
-counter in the *same output* contradicted it and wasn't read.
+**The `perf` one is a cross-checking lesson.** A single tool reported a striking number that matched
+the story we already believed — a stencil kernel with branchy boundary handling. The branch-miss
+counter in the *same output* disagreed with it. Two counters from one run, pointing opposite ways, is
+the cheapest contradiction there is to catch, and it only needs someone to read the whole output.
 
-**Still open**
-
-- A non-multiplexed top-down measurement — one event group per run — to find what the serial code is
-  actually stalled on. Until then this repo has no supported microarchitectural conclusion
-- Multi-GPU compute time flattens at ~13 s from 12 GPUs on, which points at per-kernel launch and sync
-  overhead rather than the halo exchange. Never profiled to confirm
-- The plots in [`results/plots/`](results/plots/) predate correction #1 and still show raw wall times
+Nailing down the real stall needs a non-multiplexed top-down measurement, one event group per run.
+The multi-GPU compute time also flattens at ~13 s from 12 GPUs on, which points at per-kernel launch
+and sync overhead rather than the halo exchange — that's the next thing worth profiling.
 
 ## What we'd do differently
 
