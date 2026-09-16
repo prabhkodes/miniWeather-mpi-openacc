@@ -16,7 +16,7 @@ Taking an existing serial Fortran weather model and making it run on 256 CPU cor
 | | |
 |---|---:|
 | CPU | 190 s → **2.1 s** (88.8×, 256 cores) |
-| GPU | **8.2×** again over 256 CPU cores |
+| GPU | **≈4×** over 256 CPU cores (8 A100s, same grid, normalised per simulated second) |
 | Team | 3 developers, 40 reviewed PRs |
 | Course | *P1.8 Best Practices in Scientific Software Development*, MHPC ICTP/SISSA, Nov–Dec 2025 |
 
@@ -55,7 +55,7 @@ Full write-up in [`docs/presentation.pdf`](docs/presentation.pdf).
 | **OpenMP** | Threaded the tendency stencils — the hot loops of the RK stages |
 | **MPI** | 1-D domain decomposition in *x*, non-blocking halo exchange, `Allreduce` for conservation |
 | **OpenACC** | GPU offload, explicit device data residency, one GPU per rank, GPU-aware MPI |
-| **Parallel I/O** | NetCDF, per-rank hyperslab writes into one shared file |
+| **Output** | NetCDF via rank-0 aggregation: every rank sends its slab to rank 0, which writes it at its global offset into one file |
 | **Build** | CMake — one tree, three configurations (CPU-only, MPI+OpenMP, MPI+OpenACC) |
 | **CI** | GitHub Actions — builds the Docker image, runs the test suite on every push and PR |
 | **Tests** | Mass/energy conservation thresholds + NetCDF output comparison, wired into CTest |
@@ -82,10 +82,13 @@ so `nz = nx/2` and `dt = 1.5·dx/450` follow from the CFL condition.
 | Cell-updates | 4.8 × 10⁸ | 3.0 × 10¹⁰ |
 | FLOPs (≈) | 274 GFLOP | 17.1 TFLOP |
 
-- The 10 MiB working set at NX = 400 **fits in L3** on these nodes
-- Which is why the serial profile shows only a 3.01% L1-d miss rate but **74.6% bad speculation**
+- The 10 MiB working set at NX = 400 **fits in L3** on these nodes, and the serial profile shows only a
+  3.01% L1-d miss rate
+- `perf`'s top-down view also reported 74.6% "bad speculation", but the same run's branch-miss rate was
+  0.05% and the counters were multiplexed, so that attribution isn't reliable
 
-→ **The bottleneck is branching, not memory.**
+→ **Memory isn't the limit at this size.** Which microarchitectural stall is needs a non-multiplexed
+top-down measurement.
 
 FLOP counts are hand-counted from the stencil body: ~87 flops per cell per directional sweep, six
 sweeps per timestep (3 RK stages × 2 directions), plus the state update. Divisions count as one, the
@@ -137,37 +140,49 @@ The same runs ordered by total cores instead of node count:
 
 ### Multi-GPU, nx = 2000, nz = 1000
 
-| GPUs | Config | Time | Communication share |
-|---:|---|---:|---:|
-| 1 | 1 node × 1 | 58.2 s | 0% |
-| 4 | 1 node × 4 | 23.3 s | 4% |
-| 8 | 2 nodes × 4 | 17.6 s | 10% |
-| 12 | 3 nodes × 4 | 17.5 s | 21% |
-| 16 | 4 nodes × 4 | 18.2 s | 24% |
+From the committed logs, [`results/gpu/multigpu_scaling_*.init`](results/gpu/):
 
-- Communication goes from 0% to **24%** of runtime as each GPU gets a smaller piece
+| GPUs | Config | Time | Speedup vs 1 GPU | Communication share |
+|---:|---|---:|---:|---:|
+| 1 | 1 node × 1 | 49.9 s | 1.00× | 0% |
+| 4 | 1 node × 4 | 21.1 s | 2.37× | 4% |
+| 8 | 2 nodes × 4 | 16.4 s | 3.04× | 11% |
+| 12 | 3 nodes × 4 | 16.7 s | 2.99× | 22% |
+| 16 | 4 nodes × 4 | 17.1 s | 2.92× | 26% |
+
+- Communication goes from 0% to **26%** of runtime as each GPU gets a smaller piece
 - At 16 GPUs a card holds 15 MiB and barely does any work per timestep
 - The halo exchange still costs the same
+- Compute time also stops shrinking, at ~13 s from 12 GPUs on: the per-kernel launch and
+  synchronisation cost doesn't shrink with the subdomain
 
-→ **Scaling stops at 8 GPUs.** The fix is overlapping communication with computation. We didn't get to it.
+→ **Scaling stops at 8 GPUs.** The fixes are overlapping communication with computation, asynchronous
+kernel queues and fewer, fused kernels. We didn't get to them.
 
 ![CPU vs GPU](results/plots/cpu_vs_gpu_comparison.png)
 ![Scaling](results/plots/scaling_analysis.png)
 
+<sub>The CPU-vs-GPU plot shows raw wall times; the CPU run in it simulated twice as long as the GPU runs.
+Use the normalised table below for comparisons.</sub>
+
 ### CPU vs GPU, per component
 
-128 MPI × 2 OMP (256 cores) against 8 GPUs on 2 nodes, nx = 2000, nz = 1000, 1000 s simulated.
+128 MPI × 2 OMP (256 cores, 8 nodes) against 8 GPUs on 2 nodes, nx = 2000, nz = 1000. The CPU run
+([`results/cpu/best_cpu.init`](results/cpu/best_cpu.init)) simulated **1000 s** and the GPU run **500 s**,
+with the same `dt`, so CPU times are halved to compare the same number of timesteps.
 
-| Component | CPU | GPU | Speedup |
+| Component | CPU, per 500 s simulated | GPU | Speedup |
 |---|---:|---:|---:|
-| Step (main loop) | 128.0 s | 14.7 s | **8.68×** |
-| Communication | 32.0 s | 1.7 s | 18.52× |
+| Step (main loop, excluding MPI) | 64.0 s | 14.7 s | **4.3×** |
+| Communication (MPI) | 16.0 s | 1.7 s | 9.3× |
 | Init / thermal / hydrostatic | — | — | 0.03–0.07× |
-| **Total** | | | **8.20×** |
+| **Total wall time** | **67.4 s** | **16.4 s** | **4.1×** |
 
 - Setup routines are **25–30× slower** on GPU — they run once, aren't offloaded, and pay device init
 - Over a real run length that doesn't matter, but it's there
-- Communication looks 18.5× better mostly because 8 ranks have far less to exchange than 128
+- Communication looks 9× better mostly because 8 ranks have far less to exchange than 128
+- An earlier version of this README compared the raw times and reported 8.2×; that mixed two different
+  simulated durations
 
 ### CPU baseline profile
 
@@ -177,7 +192,8 @@ The same runs ordered by total cores instead of node count:
 | IPC | 2.40 |
 | L1-d miss | 3.01% |
 | LLC miss | 3.06% |
-| **Bad speculation** | **74.6%** |
+| Branch misses | 0.05% of branches |
+| Top-down "bad speculation" | 74.6% — multiplexed counters, inconsistent with the branch-miss rate |
 
 Full counters in [`results/cpu/base_perf.txt`](results/cpu/base_perf.txt).
 
@@ -186,7 +202,7 @@ Full counters in [`results/cpu/base_perf.txt`](results/cpu/base_perf.txt).
 | What | Where | PRs |
 |---|---|---|
 | **Parallel timing framework**, written from scratch. Scoped timer using a Fortran `final` binding. Reports per-routine max / exclusive / average / call count across all ranks, and names the slowest rank per routine. Every number on this page was measured with it. | [`src/parallel_timer.f90`](src/parallel_timer.f90) | [#3](https://github.com/prabhkodes/fightClub/pull/3) [#14](https://github.com/prabhkodes/fightClub/pull/14) [#17](https://github.com/prabhkodes/fightClub/pull/17) |
-| **Parallel NetCDF output.** Wrote the module — hyperslab writes with per-rank offsets from the decomposition, unlimited time dimension. | [`src/module_output.F90`](src/module_output.F90) | [#30](https://github.com/prabhkodes/fightClub/pull/30) [#36](https://github.com/prabhkodes/fightClub/pull/36) |
+| **NetCDF output.** Wrote the module — every rank sends its slab to rank 0, which writes it as a hyperslab at the rank's global offset, with an unlimited time dimension. Correct and simple, but serial at rank 0; a collective version would use `nf90_create_par`. | [`src/module_output.F90`](src/module_output.F90) | [#30](https://github.com/prabhkodes/fightClub/pull/30) [#36](https://github.com/prabhkodes/fightClub/pull/36) |
 | **OpenMP threading** of the *x*/*z* tendency stencils. | `src/module_types.F90` | [#20](https://github.com/prabhkodes/fightClub/pull/20) |
 | **Merged the MPI and OpenACC branches** into one source tree building all three configurations. | 6 files | [#34](https://github.com/prabhkodes/fightClub/pull/34) |
 | **Benchmark harness and the whole scaling campaign** — I/O-free benchmark mode, SLURM sweeps, every run in the tables above, `perf` collection. | `scripts/slurm/` | [#39](https://github.com/prabhkodes/fightClub/pull/39) [#43](https://github.com/prabhkodes/fightClub/pull/43) [#46](https://github.com/prabhkodes/fightClub/pull/46) |
@@ -250,7 +266,7 @@ The loop: **profile → find the hot spot → change it → re-check scaling →
 
 | Tool | What it found |
 |---|---|
-| `perf stat` on the serial build | 74.6% bad speculation — branch-bound, not memory-starved |
+| `perf stat` on the serial build | Low cache-miss rates (L1-d 3.01%, LLC 3.06%). Its 74.6% "bad speculation" contradicts a 0.05% branch-miss rate in the same run, so it isn't trusted |
 | The MPI-wide timer | `Computation: step` was 190.08 s of a 190.10 s run — **99.99%** |
 | NVTX + Nsight Systems | Named spans per rank (`Halo Exchange X`, `Runge-Kutta Integration`) instead of unnamed kernels |
 
@@ -271,6 +287,8 @@ The loop: **profile → find the hot spot → change it → re-check scaling →
 ## What we'd do differently
 
 - **Overlap communication with computation.** The multi-GPU table shows exactly what that's worth
+- **Collective parallel NetCDF output** (`nf90_create_par` with collective writes) instead of funnelling
+  every slab through rank 0
 - **Run the tests on the cluster from CI**, not just in a container on GitHub's runners, so
   cluster-only toolchain failures get caught by the pipeline instead of by a person
 
@@ -279,8 +297,9 @@ Smaller lessons:
 - Module load order matters, and gives confusing link errors when wrong
 - One GPU per rank
 - Check results every time, not just when something looks off
-- Profile even when the code seems fine — nobody would have guessed the 74.6% bad speculation without
-  measuring it
+- Cross-check profiler outputs against each other — the top-down "bad speculation" figure contradicted
+  the branch-miss count from the same run
+- Normalise before comparing: two runs that simulate different durations aren't comparable on wall time
 
 ## Build and run
 
@@ -352,7 +371,7 @@ results/
 | `module_physics.f90` | Initial and boundary conditions, solution, mass/energy budgets |
 | `module_types.F90` | State, flux and tendency types; halo exchange |
 | `module_parameters.f90` | Decomposition and solver parameters, physical constants |
-| `module_output.F90` | Parallel NetCDF output |
+| `module_output.F90` | NetCDF output (rank-0 aggregation) |
 | `parallel_timer.f90` | Per-routine timing across all ranks |
 | `module_nvtx.F90` | NVTX ranges; no-ops when built without NVTX |
 
